@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Aplikasi Database Pelanggan</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Leaflet CSS for Map Picker & View -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- SheetJS (xlsx.full.min.js) for Exporting to native Excel .xlsx files -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+              800: '#166534',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #mapPicker, #mapView {
+      height: 260px;
+      width: 100%;
+      border-radius: 0.75rem;
+      z-index: 10;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: rgba(156, 163, 175, 0.4);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 antialiased min-h-screen flex flex-col pb-12 transition-colors duration-200">
+
+  <header class="bg-gradient-to-r from-emerald-700 via-teal-700 to-cyan-800 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-3 sm:px-6 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="bg-white/10 p-2.5 rounded-xl backdrop-blur-md">
+          <i class="fa-solid fa-address-book text-2xl text-emerald-300"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg sm:text-xl leading-tight">Database Pelanggan</h1>
+          <p class="text-xs text-emerald-100 opacity-90">Sistem Manajemen Data Mobile & Excel Export</p>
+        </div>
+      </div>
+      
+      <div class="flex items-center space-x-2">
+        <button onclick="toggleDarkMode()" id="themeToggleBtn" title="Mode Terang / Gelap" class="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-xl backdrop-blur-md transition">
+          <i class="fa-solid fa-moon text-base" id="themeIcon"></i>
+        </button>
+        <button onclick="bukaModalForm()" class="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs sm:text-sm font-semibold px-3.5 py-2.5 rounded-xl shadow-sm transition flex items-center gap-1.5">
+          <i class="fa-solid fa-plus text-sm"></i>
+          <span class="hidden sm:inline">Tambah Pelanggan</span>
+          <span class="sm:hidden">Tambah</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 pt-5 flex-1 w-full">
+
+    <!-- Search & Quick Actions Bar -->
+    <div class="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-700/80 mb-5 flex flex-col md:flex-row gap-3 items-center justify-between transition-colors">
+      
+      <!-- 6. Search Input -->
+      <div class="relative w-full md:w-96">
+        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+          <i class="fa-solid fa-magnifying-glass text-sm"></i>
+        </div>
+        <input 
+          type="text" 
+          id="searchInput"
+          oninput="filterPelanggan()"
+          placeholder="Cari ID, Nama, Alamat, Koordinat..." 
+          class="w-full pl-10 pr-9 py-2.5 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition dark:text-white"
+        >
+        <button id="clearSearchBtn" onclick="resetPencarian()" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- Action Buttons & Stats -->
+      <div class="flex items-center justify-between w-full md:w-auto gap-2.5 text-xs sm:text-sm flex-wrap sm:flex-nowrap">
+        <div class="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 px-3 py-2 rounded-xl font-medium text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+          <i class="fa-solid fa-users text-emerald-600 dark:text-emerald-400"></i>
+          <span>Total: <strong id="totalCount" class="text-emerald-900 dark:text-emerald-200">0</strong></span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- 7. Excel Export Button -->
+          <button onclick="exportExcel()" title="Ekspor Database ke Excel (.xlsx)" class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3.5 py-2 rounded-xl font-semibold shadow-sm transition flex items-center gap-1.5">
+            <i class="fa-solid fa-file-excel text-base text-emerald-200"></i>
+            <span>Export Excel (.xlsx)</span>
+          </button>
+
+          <!-- 8. JSON Backup & Import -->
+          <button onclick="exportJSON()" title="Cadangkan Data (JSON)" class="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-xl font-medium border border-slate-200 dark:border-slate-600 transition flex items-center gap-1">
+            <i class="fa-solid fa-download text-xs text-blue-500"></i>
+            <span class="hidden sm:inline">JSON</span>
+          </button>
+
+          <button onclick="triggerImportJSON()" title="Impor Data Cadangan (JSON)" class="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-95 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-xl font-medium border border-slate-200 dark:border-slate-600 transition flex items-center gap-1">
+            <i class="fa-solid fa-upload text-xs text-indigo-500"></i>
+            <span class="hidden sm:inline">Import</span>
+          </button>
+          <input type="file" id="importFileInput" accept=".json" class="hidden" onchange="importJSON(event)">
+
+          <button onclick="konfirmasiHapusSemua()" title="Hapus Semua Data" class="bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 p-2 sm:px-3 sm:py-2 rounded-xl border border-red-200 dark:border-red-800/60 transition">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="dataContainer">
+      <!-- Mobile Card Layout -->
+      <div id="mobileCardList" class="grid grid-cols-1 sm:grid-cols-2 lg:hidden gap-4">
+        <!-- Cards injected dynamically via JS -->
+      </div>
+
+      <!-- Desktop Table Layout -->
+      <div class="hidden lg:block bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-700/80 overflow-hidden transition-colors">
+        <div class="overflow-x-auto custom-scrollbar">
+          <table class="w-full text-left border-collapse text-xs sm:text-sm">
+            <thead>
+              <tr class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold uppercase tracking-wider">
+                <th class="p-3.5 w-16 text-center">Foto</th>
+                <th class="p-3.5">ID Pelanggan</th>
+                <th class="p-3.5">Nama Pelanggan</th>
+                <th class="p-3.5">Alamat Lengkap</th>
+                <th class="p-3.5">Koordinat GPS</th>
+                <th class="p-3.5">Waktu Input</th>
+                <th class="p-3.5 text-center w-36">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="desktopTableBody" class="divide-y divide-slate-100 dark:divide-slate-700/60 text-slate-700 dark:text-slate-200">
+              <!-- Rows injected dynamically via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Empty Data State -->
+      <div id="emptyState" class="hidden bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-8 text-center my-6">
+        <div class="bg-slate-100 dark:bg-slate-700 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
+          <i class="fa-solid fa-users-slash text-2xl"></i>
+        </div>
+        <h3 class="font-semibold text-slate-700 dark:text-slate-200 mb-1">Belum Ada Data Pelanggan</h3>
+        <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-4">Silakan tambahkan data pelanggan baru melalui tombol di bawah.</p>
+        <button onclick="bukaModalForm()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm px-4 py-2 rounded-xl shadow-sm transition">
+          <i class="fa-solid fa-plus me-1"></i> Tambah Pelanggan Baru
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <div id="modalForm" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden overflow-y-auto">
+    <div class="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden my-auto max-h-[90vh] flex flex-col transition-all">
+      
+      <!-- Modal Header -->
+      <div class="bg-slate-800 dark:bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
+        <h3 id="modalFormTitle" class="font-bold text-base sm:text-lg flex items-center gap-2">
+          <i class="fa-solid fa-user-plus text-emerald-400"></i>
+          <span>Tambah Pelanggan Baru</span>
+        </h3>
+        <button onclick="tutupModalForm()" class="text-slate-400 hover:text-white p-1 rounded-lg transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Form Inputs -->
+      <form id="pelangganForm" onsubmit="simpanPelanggan(event)" class="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-4">
+        <input type="hidden" id="editIndex" value="-1">
+
+        <!-- 1. Nomor ID Pelanggan -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            1. Nomor ID Pelanggan <span class="text-red-500">*</span>
+          </label>
+          <div class="relative">
+            <input 
+              type="text" 
+              id="idPelanggan" 
+              required
+              placeholder="Contoh: PLG-001" 
+              class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition text-slate-800 dark:text-white"
+            >
+            <button 
+              type="button" 
+              onclick="generateAutoID()" 
+              title="Buat ID Otomatis"
+              class="absolute right-2 top-2 text-xs bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 px-2.5 py-1 rounded-lg font-medium transition"
+            >
+              Acak ID
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Nama Pelanggan -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            2. Nama Pelanggan <span class="text-red-500">*</span>
+          </label>
+          <input 
+            type="text" 
+            id="namaPelanggan" 
+            required
+            placeholder="Masukkan nama lengkap pelanggan" 
+            class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition text-slate-800 dark:text-white"
+          >
+        </div>
+
+        <!-- 3. Alamat Pelanggan -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            3. Alamat Pelanggan <span class="text-red-500">*</span>
+          </label>
+          <textarea 
+            id="alamatPelanggan" 
+            rows="2" 
+            required
+            placeholder="Jalan, No. Rumah, RT/RW, Kelurahan, Kecamatan..." 
+            class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition text-slate-800 dark:text-white"
+          ></textarea>
+        </div>
+
+        <!-- 4. Maps / Titik Koordinat -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            4. Maps / Titik Koordinat GPS <span class="text-red-500">*</span>
+          </label>
+          <div class="flex gap-2 mb-2">
+            <input 
+              type="text" 
+              id="koordinatPelanggan" 
+              required
+              placeholder="Contoh: -6.200000, 106.816666" 
+              class="flex-1 px-3.5 py-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition text-slate-800 dark:text-white"
+            >
+            <button 
+              type="button" 
+              onclick="dapatkanLokasiGPS()" 
+              class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-semibold px-3 py-2.5 rounded-xl transition flex items-center gap-1 shrink-0 shadow-sm"
+            >
+              <i class="fa-solid fa-location-crosshairs text-sm"></i>
+              <span>GPS</span>
+            </button>
+            <button 
+              type="button" 
+              onclick="bukaPetaPilih()" 
+              class="bg-cyan-600 hover:bg-cyan-700 active:scale-95 text-white text-xs font-semibold px-3 py-2.5 rounded-xl transition flex items-center gap-1 shrink-0 shadow-sm"
+            >
+              <i class="fa-solid fa-map-location-dot text-sm"></i>
+              <span>Peta</span>
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">Tekan 'GPS' untuk lokasi presisi saat ini atau tombol 'Peta' untuk memilih titik lokasi secara manual.</p>
+        </div>
+
+        <!-- Interactive Leaflet Map Picker Inline -->
+        <div id="mapPickerWrapper" class="hidden space-y-2 border border-slate-200 dark:border-slate-700 p-2 rounded-2xl bg-slate-50 dark:bg-slate-900">
+          <div class="flex justify-between items-center text-xs font-semibold text-slate-600 dark:text-slate-300 px-1">
+            <span>Geser marker / klik peta untuk set koordinat:</span>
+            <button type="button" onclick="tutupPetaPilih()" class="text-red-500 hover:underline">Sembunyikan Peta</button>
+          </div>
+          <div id="mapPicker"></div>
+        </div>
+
+        <!-- 5. Foto Rumah Pelanggan -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            5. Foto Rumah Pelanggan <span class="text-red-500">*</span>
+          </label>
+          
+          <div class="flex items-start gap-3">
+            <div class="flex-1">
+              <input 
+                type="file" 
+                id="fotoRumahInput" 
+                accept="image/*" 
+                capture="environment"
+                onchange="pratinjauFoto(event)"
+                class="block w-full text-xs text-slate-500 dark:text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 dark:file:bg-emerald-950 file:text-emerald-700 dark:file:text-emerald-300 hover:file:bg-emerald-100 cursor-pointer border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700"
+              >
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Dapat difoto langsung via kamera HP atau diambil dari galeri.</p>
+            </div>
+            
+            <div class="w-20 h-20 bg-slate-100 dark:bg-slate-700 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl flex items-center justify-center overflow-hidden shrink-0 relative">
+              <img id="previewImg" src="" class="w-full h-full object-cover hidden" alt="Pratinjau Foto">
+              <i id="previewPlaceholder" class="fa-solid fa-image text-slate-400 text-xl"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Submit Controls -->
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-end gap-2">
+          <button 
+            type="button" 
+            onclick="tutupModalForm()" 
+            class="px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition"
+          >
+            Batal
+          </button>
+          <button 
+            type="submit" 
+            class="px-5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 rounded-xl transition"
+          >
+            Simpan Data
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modalDetail" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden overflow-y-auto">
+    <div class="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden my-auto max-h-[90vh] flex flex-col transition-all">
+      
+      <!-- Detail Header -->
+      <div class="bg-slate-800 dark:bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
+        <h3 class="font-bold text-base sm:text-lg flex items-center gap-2">
+          <i class="fa-solid fa-circle-info text-emerald-400"></i>
+          <span>Detail Pelanggan</span>
+        </h3>
+        <button onclick="tutupModalDetail()" class="text-slate-400 hover:text-white p-1 rounded-lg transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Detail Content -->
+      <div class="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-4 text-xs sm:text-sm">
+        <!-- Photo banner -->
+        <div class="w-full h-48 sm:h-56 bg-slate-100 dark:bg-slate-700 rounded-xl overflow-hidden relative group cursor-pointer border border-slate-200 dark:border-slate-700" onclick="perbesarFoto()">
+          <img id="detailFoto" src="" alt="Foto Rumah" class="w-full h-full object-cover">
+          <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white font-medium gap-2">
+            <i class="fa-solid fa-magnifying-glass-plus"></i> Klik untuk memperbesar foto
+          </div>
+        </div>
+
+        <!-- Details List -->
+        <div class="grid grid-cols-1 gap-3">
+          <div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
+            <span class="text-slate-400 dark:text-slate-400 text-[11px] block uppercase font-semibold">ID Pelanggan</span>
+            <span id="detailID" class="font-bold text-emerald-600 dark:text-emerald-400 text-base"></span>
+          </div>
+
+          <div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
+            <span class="text-slate-400 dark:text-slate-400 text-[11px] block uppercase font-semibold">Nama Pelanggan</span>
+            <span id="detailNama" class="font-semibold text-slate-800 dark:text-slate-100"></span>
+          </div>
+
+          <div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
+            <span class="text-slate-400 dark:text-slate-400 text-[11px] block uppercase font-semibold">Alamat Pelanggan</span>
+            <span id="detailAlamat" class="text-slate-700 dark:text-slate-200 leading-relaxed"></span>
+          </div>
+
+          <div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
+            <span class="text-slate-400 dark:text-slate-400 text-[11px] block uppercase font-semibold mb-1">Koordinat GPS</span>
+            <div class="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+              <span id="detailKoordinat" class="font-mono text-slate-700 dark:text-slate-200"></span>
+              <a 
+                id="detailGoogleMapsBtn" 
+                href="#" 
+                target="_blank" 
+                class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1 shadow-sm"
+              >
+                <i class="fa-solid fa-diamond-turn-right"></i> Rute Google Maps
+              </a>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700">
+            <span class="text-slate-400 dark:text-slate-400 text-[11px] block uppercase font-semibold">Waktu Input Data</span>
+            <span id="detailWaktu" class="text-slate-600 dark:text-slate-300 font-medium"></span>
+          </div>
+        </div>
+
+        <!-- Interactive Map Preview -->
+        <div>
+          <span class="text-slate-700 dark:text-slate-200 font-semibold block mb-1.5">Lokasi Peta:</span>
+          <div id="mapView"></div>
+        </div>
+      </div>
+
+      <!-- Detail Footer -->
+      <div class="bg-slate-50 dark:bg-slate-900 px-5 py-3 border-t border-slate-100 dark:border-slate-700 flex justify-end">
+        <button onclick="tutupModalDetail()" class="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-semibold rounded-xl text-xs sm:text-sm">
+          Tutup
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zoom Image Modal -->
+  <div id="modalZoom" class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 hidden" onclick="tutupModalZoom()">
+    <div class="relative max-w-4xl max-h-full">
+      <img id="zoomImage" src="" class="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl">
+      <button onclick="tutupModalZoom()" class="absolute top-2 right-2 text-white bg-black/50 p-2 rounded-full hover:bg-black">
+        <i class="fa-solid fa-xmark text-xl"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-4 right-4 z-50 bg-slate-800 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300">
+    <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toastMessage" class="text-xs sm:text-sm font-medium">Notifikasi</span>
+  </div>
+
+  <!-- Leaflet JS Library -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // State management
+    let database = [];
+    let currentFilteredData = [];
+    let base64FotoTemp = "";
+
+    // Leaflet Map instances
+    let pickerMapInstance = null;
+    let pickerMarker = null;
+    let viewMapInstance = null;
+    let viewMarker = null;
+
+    // Default Sample Data
+    const SAMPLE_DATA = [
+      {
+        id: "PLG-1001",
+        nama: "Budi Santoso",
+        alamat: "Jl. Sudirman No. 45, RT 02/RW 05, Jakarta Selatan",
+        koordinat: "-6.208800, 106.845600",
+        foto: "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=400&q=80",
+        waktuInput: "2026-10-01 10:15:00"
+      },
+      {
+        id: "PLG-1002",
+        nama: "Siti Aminah",
+        alamat: "Jl. Gatot Subroto No. 12, Bandung",
+        koordinat: "-6.917500, 107.619100",
+        foto: "https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=400&q=80",
+        waktuInput: "2026-10-02 14:30:22"
+      }
+    ];
+
+    window.onload = function() {
+      initTheme();
+      muatData();
+    };
+
+    // Dark mode toggle logic
+    function initTheme() {
+      if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+        document.getElementById('themeIcon').className = 'fa-solid fa-sun text-yellow-300';
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.getElementById('themeIcon').className = 'fa-solid fa-moon text-base';
+      }
+    }
+
+    function toggleDarkMode() {
+      if (document.documentElement.classList.contains('dark')) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+        document.getElementById('themeIcon').className = 'fa-solid fa-moon text-base';
+      } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+        document.getElementById('themeIcon').className = 'fa-solid fa-sun text-yellow-300';
+      }
+    }
+
+    // Load data from LocalStorage
+    function muatData() {
+      try {
+        const stored = localStorage.getItem('db_pelanggan');
+        if (stored) {
+          database = JSON.parse(stored);
+        } else {
+          database = [...SAMPLE_DATA];
+          simpanKeStorage();
+        }
+      } catch (e) {
+        console.error("Gagal membaca LocalStorage", e);
+        database = [...SAMPLE_DATA];
+      }
+      filterPelanggan();
+    }
+
+    function simpanKeStorage() {
+      try {
+        localStorage.setItem('db_pelanggan', JSON.stringify(database));
+      } catch (e) {
+        tampilkanToast("Penyimpanan penuh! Kompresi foto akan diperkecil.", true);
+      }
+    }
+
+    // Render Data into DOM UI
+    function renderData(dataToRender) {
+      currentFilteredData = dataToRender;
+      const mobileContainer = document.getElementById('mobileCardList');
+      const desktopContainer = document.getElementById('desktopTableBody');
+      const emptyState = document.getElementById('emptyState');
+      const totalCount = document.getElementById('totalCount');
+
+      totalCount.textContent = dataToRender.length;
+
+      if (dataToRender.length === 0) {
+        mobileContainer.innerHTML = '';
+        desktopContainer.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+
+      // Render Mobile Card Layout
+      mobileContainer.innerHTML = dataToRender.map((item) => {
+        const originalIndex = database.findIndex(p => p.id === item.id);
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.koordinat)}`;
+        
+        return `
+          <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-700/80 overflow-hidden flex flex-col justify-between hover:shadow-md transition">
+            <div>
+              <div class="relative h-44 bg-slate-100 dark:bg-slate-700 overflow-hidden">
+                <img src="${item.foto}" alt="Foto ${item.nama}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/400x300/e2e8f0/64748b?text=Tidak+Ada+Foto'">
+                <span class="absolute top-2 left-2 bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow">
+                  ${escapeHtml(item.id)}
+                </span>
+                <button onclick="bukaModalDetailByIdx(${originalIndex})" class="absolute bottom-2 right-2 bg-slate-900/70 hover:bg-slate-900 text-white text-xs px-2.5 py-1.5 rounded-lg backdrop-blur-sm transition flex items-center gap-1">
+                  <i class="fa-solid fa-eye"></i> Detail
+                </button>
+              </div>
+
+              <div class="p-4 space-y-2">
+                <h4 class="font-bold text-slate-800 dark:text-slate-100 text-base leading-snug">${escapeHtml(item.nama)}</h4>
+                <p class="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+                  <i class="fa-solid fa-location-dot text-red-500 me-1"></i>${escapeHtml(item.alamat)}
+                </p>
+                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/50 p-2 rounded-lg border border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                  <span>${escapeHtml(item.koordinat)}</span>
+                  <a href="${mapsUrl}" target="_blank" class="text-emerald-600 dark:text-emerald-400 hover:underline font-semibold flex items-center gap-1">
+                    <i class="fa-solid fa-diamond-turn-right"></i> Maps
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-3 bg-slate-50 dark:bg-slate-700/30 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-xs">
+              <span class="text-slate-400 dark:text-slate-400 text-[10px]">${escapeHtml(item.waktuInput || '-')}</span>
+              <div class="flex items-center gap-2">
+                <button onclick="editPelanggan(${originalIndex})" class="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800/60 rounded-lg font-semibold transition flex items-center gap-1">
+                  <i class="fa-solid fa-pen-to-square"></i> Edit
+                </button>
+                <button onclick="hapusPelanggan(${originalIndex})" class="px-3 py-1.5 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 border border-red-200 dark:border-red-800/60 rounded-lg font-semibold transition flex items-center gap-1">
+                  <i class="fa-solid fa-trash-can"></i> Hapus
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Render Desktop Table Layout
+      desktopContainer.innerHTML = dataToRender.map((item) => {
+        const originalIndex = database.findIndex(p => p.id === item.id);
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.koordinat)}`;
+
+        return `
+          <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition">
+            <td class="p-3 text-center">
+              <img src="${item.foto}" class="w-12 h-12 object-cover rounded-xl border border-slate-200 dark:border-slate-600 mx-auto" alt="Thumb" onerror="this.src='https://placehold.co/100/e2e8f0/64748b?text=Err'">
+            </td>
+            <td class="p-3 font-semibold text-emerald-600 dark:text-emerald-400">${escapeHtml(item.id)}</td>
+            <td class="p-3 font-semibold text-slate-800 dark:text-slate-100">${escapeHtml(item.nama)}</td>
+            <td class="p-3 text-slate-600 dark:text-slate-300 max-w-xs truncate" title="${escapeHtml(item.alamat)}">${escapeHtml(item.alamat)}</td>
+            <td class="p-3 font-mono text-xs">
+              <a href="${mapsUrl}" target="_blank" class="text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1">
+                <i class="fa-solid fa-location-dot"></i> ${escapeHtml(item.koordinat)}
+              </a>
+            </td>
+            <td class="p-3 text-slate-400 text-xs">${escapeHtml(item.waktuInput || '-')}</td>
+            <td class="p-3 text-center">
+              <div class="flex items-center justify-center gap-1.5">
+                <button onclick="bukaModalDetailByIdx(${originalIndex})" title="Lihat Detail" class="p-2 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 rounded-lg transition">
+                  <i class="fa-solid fa-eye"></i>
+                </button>
+                <button onclick="editPelanggan(${originalIndex})" title="Edit Data" class="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 hover:bg-amber-100 rounded-lg transition">
+                  <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+                <button onclick="hapusPelanggan(${originalIndex})" title="Hapus" class="p-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 rounded-lg transition">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // 6. Real-time Search / Filter
+    function filterPelanggan() {
+      const query = document.getElementById('searchInput').value.toLowerCase().trim();
+      const clearBtn = document.getElementById('clearSearchBtn');
+
+      if (query !== '') {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+
+      const hasil = database.filter(item => {
+        return (
+          item.id.toLowerCase().includes(query) ||
+          item.nama.toLowerCase().includes(query) ||
+          item.alamat.toLowerCase().includes(query) ||
+          item.koordinat.toLowerCase().includes(query)
+        );
+      });
+
+      renderData(hasil);
+    }
+
+    function resetPencarian() {
+      document.getElementById('searchInput').value = '';
+      filterPelanggan();
+    }
+
+    // 7. EXPORT TO EXCEL (.xlsx) FUNCTION
+    function exportExcel() {
+      if (database.length === 0) {
+        tampilkanToast("Tidak ada data untuk diekspor ke Excel.", true);
+        return;
+      }
+
+      // Format current dataset into Excel Rows
+      const dataForExcel = currentFilteredData.map((item, idx) => {
+        const googleMapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.koordinat)}`;
+        return {
+          "No": idx + 1,
+          "ID Pelanggan": item.id,
+          "Nama Pelanggan": item.nama,
+          "Alamat Pelanggan": item.alamat,
+          "Koordinat GPS": item.koordinat,
+          "Link Google Maps": googleMapsLink,
+          "Waktu Input": item.waktuInput || "-"
+        };
+      });
+
+      // Create a new Excel Workbook using SheetJS
+      const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+
+      // Auto-fit Column Widths
+      const columnWidths = [
+        { wch: 6 },   // No
+        { wch: 16 },  // ID Pelanggan
+        { wch: 25 },  // Nama Pelanggan
+        { wch: 45 },  // Alamat
+        { wch: 24 },  // Koordinat
+        { wch: 55 },  // Link Google Maps
+        { wch: 20 }   // Waktu Input
+      ];
+      worksheet['!cols'] = columnWidths;
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Data Pelanggan");
+
+      // Generate File Name with timestamp
+      const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+      const filename = `Database_Pelanggan_${timestamp}.xlsx`;
+
+      // Trigger download
+      XLSX.writeFile(workbook, filename);
+
+      tampilkanToast("Database berhasil diekspor ke format Excel (.xlsx)!");
+    }
+
+    // GPS & Leaflet Logic
+    function dapatkanLokasiGPS() {
+      if (!navigator.geolocation) {
+        tampilkanToast("Browser Anda tidak mendukung lokasi GPS.", true);
+        return;
+      }
+
+      tampilkanToast("Mencari titik lokasi GPS...");
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude.toFixed(6);
+          const lng = pos.coords.longitude.toFixed(6);
+          document.getElementById('koordinatPelanggan').value = `${lat}, ${lng}`;
+          tampilkanToast("Koordinat GPS berhasil diperoleh!");
+
+          if (pickerMapInstance) {
+            updatePickerMap(lat, lng);
+          }
+        },
+        (err) => {
+          tampilkanToast("Gagal mengambil GPS. Pastikan izin lokasi HP aktif.", true);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    function bukaPetaPilih() {
+      const wrapper = document.getElementById('mapPickerWrapper');
+      wrapper.classList.remove('hidden');
+
+      let defaultLat = -6.200000;
+      let defaultLng = 106.816666;
+
+      const currentVal = document.getElementById('koordinatPelanggan').value;
+      if (currentVal.includes(',')) {
+        const parts = currentVal.split(',');
+        const latParsed = parseFloat(parts[0]);
+        const lngParsed = parseFloat(parts[1]);
+        if (!isNaN(latParsed) && !isNaN(lngParsed)) {
+          defaultLat = latParsed;
+          defaultLng = lngParsed;
+        }
+      }
+
+      setTimeout(() => {
+        if (!pickerMapInstance) {
+          pickerMapInstance = L.map('mapPicker').setView([defaultLat, defaultLng], 14);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+          }).addTo(pickerMapInstance);
+
+          pickerMarker = L.marker([defaultLat, defaultLng], { draggable: true }).addTo(pickerMapInstance);
+
+          pickerMarker.on('dragend', function (e) {
+            const coord = e.target.getLatLng();
+            document.getElementById('koordinatPelanggan').value = `${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}`;
+          });
+
+          pickerMapInstance.on('click', function (e) {
+            pickerMarker.setLatLng(e.latlng);
+            document.getElementById('koordinatPelanggan').value = `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
+          });
+        } else {
+          updatePickerMap(defaultLat, defaultLng);
+          pickerMapInstance.invalidateSize();
+        }
+      }, 200);
+    }
+
+    function updatePickerMap(lat, lng) {
+      if (pickerMapInstance && pickerMarker) {
+        pickerMapInstance.setView([lat, lng], 15);
+        pickerMarker.setLatLng([lat, lng]);
+      }
+    }
+
+    function tutupPetaPilih() {
+      document.getElementById('mapPickerWrapper').classList.add('hidden');
+    }
+
+    // Photo Capture & Client Compression
+    function pratinjauFoto(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const img = new Image();
+        img.onload = function () {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Max dimension 800px to optimize local storage
+          const maxDim = 800;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height && width > maxDim) {
+            height *= maxDim / width;
+            width = maxDim;
+          } else if (height > maxDim) {
+            width *= maxDim / height;
+            height = maxDim;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert compressed image to Data URL
+          base64FotoTemp = canvas.toDataURL('image/jpeg', 0.7);
+
+          const previewImg = document.getElementById('previewImg');
+          const previewPlaceholder = document.getElementById('previewPlaceholder');
+          previewImg.src = base64FotoTemp;
+          previewImg.classList.remove('hidden');
+          previewPlaceholder.classList.add('hidden');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function generateAutoID() {
+      const randNum = Math.floor(1000 + Math.random() * 9000);
+      document.getElementById('idPelanggan').value = `PLG-${randNum}`;
+    }
+
+    function bukaModalForm() {
+      document.getElementById('modalFormTitle').innerHTML = '<i class="fa-solid fa-user-plus text-emerald-400"></i><span>Tambah Pelanggan Baru</span>';
+      document.getElementById('pelangganForm').reset();
+      document.getElementById('editIndex').value = "-1";
+      document.getElementById('previewImg').classList.add('hidden');
+      document.getElementById('previewPlaceholder').classList.remove('hidden');
+      tutupPetaPilih();
+      base64FotoTemp = "";
+      generateAutoID();
+      document.getElementById('modalForm').classList.remove('hidden');
+    }
+
+    function tutupModalForm() {
+      document.getElementById('modalForm').classList.add('hidden');
+    }
+
+    function editPelanggan(index) {
+      const data = database[index];
+      if (!data) return;
+
+      document.getElementById('modalFormTitle').innerHTML = '<i class="fa-solid fa-pen-to-square text-amber-400"></i><span>Edit Data Pelanggan</span>';
+      document.getElementById('editIndex').value = index;
+      document.getElementById('idPelanggan').value = data.id;
+      document.getElementById('namaPelanggan').value = data.nama;
+      document.getElementById('alamatPelanggan').value = data.alamat;
+      document.getElementById('koordinatPelanggan').value = data.koordinat;
+
+      base64FotoTemp = data.foto;
+      const previewImg = document.getElementById('previewImg');
+      const previewPlaceholder = document.getElementById('previewPlaceholder');
+      previewImg.src = data.foto;
+      previewImg.classList.remove('hidden');
+      previewPlaceholder.classList.add('hidden');
+
+      tutupPetaPilih();
+      document.getElementById('modalForm').classList.remove('hidden');
+    }
+
+    function simpanPelanggan(e) {
+      e.preventDefault();
+
+      const editIndex = parseInt(document.getElementById('editIndex').value);
+      const id = document.getElementById('idPelanggan').value.trim();
+      const nama = document.getElementById('namaPelanggan').value.trim();
+      const alamat = document.getElementById('alamatPelanggan').value.trim();
+      const koordinat = document.getElementById('koordinatPelanggan').value.trim();
+
+      if (!base64FotoTemp) {
+        tampilkanToast("Harap pilih atau ambil foto rumah pelanggan!", true);
+        return;
+      }
+
+      const now = new Date();
+      const waktuInput = now.getFullYear() + "-" + 
+        String(now.getMonth() + 1).padStart(2, '0') + "-" + 
+        String(now.getDate()).padStart(2, '0') + " " + 
+        String(now.getHours()).padStart(2, '0') + ":" + 
+        String(now.getMinutes()).padStart(2, '0') + ":" + 
+        String(now.getSeconds()).padStart(2, '0');
+
+      const itemBaru = { 
+        id, 
+        nama, 
+        alamat, 
+        koordinat, 
+        foto: base64FotoTemp,
+        waktuInput: editIndex === -1 ? waktuInput : (database[editIndex].waktuInput || waktuInput)
+      };
+
+      if (editIndex === -1) {
+        if (database.some(p => p.id === id)) {
+          tampilkanToast("ID Pelanggan sudah ada! Gunakan ID lain.", true);
+          return;
+        }
+        database.unshift(itemBaru);
+        tampilkanToast("Pelanggan berhasil ditambahkan!");
+      } else {
+        database[editIndex] = itemBaru;
+        tampilkanToast("Data pelanggan berhasil diperbarui!");
+      }
+
+      simpanKeStorage();
+      filterPelanggan();
+      tutupModalForm();
+    }
+
+    function hapusPelanggan(index) {
+      if (confirm(`Apakah Anda yakin ingin menghapus pelanggan "${database[index].nama}"?`)) {
+        database.splice(index, 1);
+        simpanKeStorage();
+        filterPelanggan();
+        tampilkanToast("Data pelanggan telah dihapus.");
+      }
+    }
+
+    function konfirmasiHapusSemua() {
+      if (database.length === 0) {
+        tampilkanToast("Database sudah kosong.", true);
+        return;
+      }
+      if (confirm("PERINGATAN! Seluruh data pelanggan akan dihapus permanen. Lanjutkan?")) {
+        database = [];
+        simpanKeStorage();
+        filterPelanggan();
+        tampilkanToast("Semua data pelanggan telah dibersihkan.");
+      }
+    }
+
+    function bukaModalDetailByIdx(index) {
+      const data = database[index];
+      if (!data) return;
+
+      document.getElementById('detailFoto').src = data.foto;
+      document.getElementById('detailID').textContent = data.id;
+      document.getElementById('detailNama').textContent = data.nama;
+      document.getElementById('detailAlamat').textContent = data.alamat;
+      document.getElementById('detailKoordinat').textContent = data.koordinat;
+      document.getElementById('detailWaktu').textContent = data.waktuInput || '-';
+
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.koordinat)}`;
+      document.getElementById('detailGoogleMapsBtn').href = mapsUrl;
+
+      document.getElementById('modalDetail').classList.remove('hidden');
+
+      // Initialize/Update View Leaflet Map
+      let lat = -6.200000;
+      let lng = 106.816666;
+      if (data.koordinat.includes(',')) {
+        const parts = data.koordinat.split(',');
+        const pLat = parseFloat(parts[0]);
+        const pLng = parseFloat(parts[1]);
+        if (!isNaN(pLat) && !isNaN(pLng)) {
+          lat = pLat;
+          lng = pLng;
+        }
+      }
+
+      setTimeout(() => {
+        if (!viewMapInstance) {
+          viewMapInstance = L.map('mapView').setView([lat, lng], 15);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+          }).addTo(viewMapInstance);
+          viewMarker = L.marker([lat, lng]).addTo(viewMapInstance);
+        } else {
+          viewMapInstance.setView([lat, lng], 15);
+          viewMarker.setLatLng([lat, lng]);
+          viewMapInstance.invalidateSize();
+        }
+      }, 200);
+    }
+
+    function tutupModalDetail() {
+      document.getElementById('modalDetail').classList.add('hidden');
+    }
+
+    function perbesarFoto() {
+      const src = document.getElementById('detailFoto').src;
+      document.getElementById('zoomImage').src = src;
+      document.getElementById('modalZoom').classList.remove('hidden');
+    }
+
+    function tutupModalZoom() {
+      document.getElementById('modalZoom').classList.add('hidden');
+    }
+
+    // Backup & Restore via JSON
+    function exportJSON() {
+      if (database.length === 0) {
+        tampilkanToast("Tidak ada data untuk dibackup.", true);
+        return;
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(database, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `backup_pelanggan_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      tampilkanToast("Backup data JSON berhasil diunduh.");
+    }
+
+    function triggerImportJSON() {
+      document.getElementById('importFileInput').click();
+    }
+
+    function importJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (Array.isArray(imported)) {
+            database = imported;
+            simpanKeStorage();
+            filterPelanggan();
+            tampilkanToast("Data JSON berhasil diimpor!");
+          } else {
+            tampilkanToast("Format berkas JSON tidak sesuai.", true);
+          }
+        } catch (err) {
+          tampilkanToast("Gagal membaca berkas JSON.", true);
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = "";
+    }
+
+    function tampilkanToast(msg, isError = false) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMessage');
+      const toastIcon = document.getElementById('toastIcon');
+
+      toastMsg.textContent = msg;
+      if (isError) {
+        toastIcon.className = "fa-solid fa-circle-exclamation text-red-400";
+      } else {
+        toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
+      }
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
